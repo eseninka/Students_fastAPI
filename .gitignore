@@ -1,6 +1,6 @@
 # created by virtualenv automatically
 /.venv
 /.env
-/frontend/
+/frontend
 /Dockerfile
 /docker-compose.yml
