@@ -2,3 +2,5 @@
 /.venv
 /.env
 /frontend/
+/Dockerfile
+/docker-compose.yml
