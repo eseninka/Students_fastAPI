@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from schemas.schem import SGrade
 import codecs
+from pydantic import ValidationError
 
 load_dotenv()
 
@@ -32,68 +33,56 @@ async def upload_data(data: UploadFile = File(...)):
         try:
             validated_data = SGrade(**row)
             valid_rows.append(validated_data.model_dump())
-        except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Ошибка в данных: {e}")
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="Ошибка валидации данных")
 
     s4 = 0
     connection = psycopg2.connect(host=HOST, user=NAME_USER, password=PASSWORD, database=DATABASE)
     connection.autocommit = True
-    try:
-        with connection.cursor() as cursor:
-            for records in valid_rows:
+    with connection.cursor() as cursor:
+        for records in valid_rows:
+            cursor.execute('select student_id from students where full_name=%s', (records['full_name'],))
+            fet = cursor.fetchone()
+            id_students = fet if fet else 0
+            if id_students == 0:
+                s4 += 1
+                cursor.execute('insert into students(full_name) values (%s)', (records['full_name'],))
                 cursor.execute('select student_id from students where full_name=%s', (records['full_name'],))
-                fet = cursor.fetchone()
-                id_students = fet if fet else 0
-                if id_students == 0:
-                    s4 += 1
-                    cursor.execute('insert into students(full_name) values (%s)', (records['full_name'],))
-                    cursor.execute('select student_id from students where full_name=%s', (records['full_name'],))
-                    id_students = cursor.fetchone()
-                cursor.execute('insert into data_about_students(estimation, student_id) values (%s, %s)',
-                               (records['estimation'], id_students))
-    except Exception as e:
-        print(f'info: ошибка {e}')
-    finally:
-        if connection:
-            connection.close()
-            print('info: коннект закрыт')
+                id_students = cursor.fetchone()
+            cursor.execute('insert into data_about_students(estimation, student_id) values (%s, %s)',
+                           (records['estimation'], id_students))
+    connection.close()
+    print('info: коннект закрыт')
+
     return {"status": "ok", "records_loaded": len(valid_rows), "students": s4}
 
 
 @router_student.get("/more-than-3-twos")
-async def create_task():
+async def more_3_twos():
     connection = psycopg2.connect(host=HOST, user=NAME_USER, password=PASSWORD, database=DATABASE)
     connection.autocommit = True
     data_res = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute('select students.full_name, COUNT(d_a_s.estimation) from data_about_students as d_a_s JOIN students USING(student_id) where d_a_s.estimation = 2 group by students.full_name having count(d_a_s.estimation) > 3')
-            data_more_than_3_twos = cursor.fetchall()
-    except Exception as e:
-        print(f'info: ошибка {e}')
-    finally:
-        if connection:
-            connection.close()
-            print('info: коннект закрыт')
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'select students.full_name, COUNT(d_a_s.estimation) from data_about_students as d_a_s JOIN students USING(student_id) where d_a_s.estimation = 2 group by students.full_name having count(d_a_s.estimation) > 3')
+        data_more_than_3_twos = cursor.fetchall()
+    connection.close()
+    print('info: коннект закрыт')
     for records in data_more_than_3_twos:
-        data_res.append({"full_name" : records[0], "count_twos" : records[1]})
+        data_res.append({"full_name": records[0], "count_twos": records[1]})
     return data_res
 
+
 @router_student.get("/less-than-5-twos")
-async def create_task():
+async def less_5_twos():
     connection = psycopg2.connect(host=HOST, user=NAME_USER, password=PASSWORD, database=DATABASE)
     connection.autocommit = True
     data_res = []
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute('select students.full_name, COUNT(d_a_s.estimation) from data_about_students as d_a_s JOIN students USING(student_id) where d_a_s.estimation = 2 group by students.full_name having count(d_a_s.estimation) < 5')
-            less_than_5_twos = cursor.fetchall()
-    except Exception as e:
-        print(f'info: ошибка {e}')
-    finally:
-        if connection:
-            connection.close()
-            print('info: коннект закрыт')
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'select students.full_name, COUNT(d_a_s.estimation) from data_about_students as d_a_s JOIN students USING(student_id) where d_a_s.estimation = 2 group by students.full_name having count(d_a_s.estimation) < 5')
+        less_than_5_twos = cursor.fetchall()
+    connection.close()
     for records in less_than_5_twos:
-        data_res.append({"full_name" : records[0], "count_twos" : records[1]})
+        data_res.append({"full_name": records[0], "count_twos": records[1]})
     return data_res
